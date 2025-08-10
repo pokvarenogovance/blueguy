@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Blue Counter</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      margin: 0; min-height: 100vh; display: grid; place-items: center;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Arial, "Noto Sans", sans-serif;
+      background: linear-gradient(135deg, #0f172a, #1f2937); color: #e5e7eb;
+    }
+    .container { display: flex; flex-wrap: wrap; gap: 2rem; justify-content: center; padding: 2rem; }
+    .card {
+      width: min(680px, 92vw);
+      background: rgba(17,24,39,.9); border: 1px solid #374151; border-radius: 16px;
+      padding: 1.5rem; box-shadow: 0 10px 30px rgba(0,0,0,.35);
+    }
+    h1 { margin: 0 0 .25rem; font-size: 1.5rem; }
+    p { margin: .25rem 0 1rem; color: #9ca3af; }
+    .row { display: flex; gap: .75rem; align-items: center; margin-top: .5rem; flex-wrap: wrap; }
+    button, input {
+      appearance: none; border: 1px solid #4b5563; border-radius: 12px;
+      background: #111827; color: #e5e7eb; padding: .8rem 1rem; font-size: 1rem;
+      transition: transform .05s ease, background .2s ease, border-color .2s ease;
+    }
+    button:hover, input:hover { background: #0b1220; border-color: #60a5fa; }
+    button:active { transform: translateY(1px); }
+    button[disabled] { opacity: .6; cursor: not-allowed; }
+    .pill { font-size: .85rem; padding: .35rem .6rem; border-radius: 999px; border: 1px solid #374151; color: #9ca3af; }
+    .ok { border-color: #10b981; color: #10b981; }
+    .warn { border-color: #f59e0b; color: #f59e0b; }
+    .err { border-color: #ef4444; color: #ef4444; }
+    .hint { margin-top: .75rem; font-size: .9rem; color: #9ca3af; }
+    code { background: #0b1220; border: 1px solid #1f2937; border-radius: 6px; padding: .15rem .35rem; }
+    details { margin-top: .5rem; }
+    pre { background: #0b1220; border: 1px solid #1f2937; border-radius: 8px; padding: .75rem; overflow:auto; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Counter One -->
+    <div class="card">
+      <h1>How many times has blue canceled the stream for no reason?</h1>
+      <p>Blue has canceled the stream <span id="counterDisplay1" class="pill">0</span> times for no reason.</p>
+      <div class="row">
+        <button id="clickBtn1" disabled style="display:none;">Click</button>
+        <span id="status1" class="pill warn">Connecting…</span>
+      </div>
+      <div class="hint" id="hint1"></div>
+      <div class="row" style="margin-top: 1rem;">
+        <input type="password" id="passInput1" placeholder="Enter password…" />
+        <button id="unlockBtn1">Unlock Clicker</button>
+      </div>
+      <details><summary>Logs</summary><pre id="log1"></pre></details>
+    </div>
+
+    <!-- Counter Two -->
+    <div class="card">
+      <h1>How many times has blue canceled the event for no reason?</h1>
+      <p>Blue canceled the event <span id="counterDisplay2" class="pill">0</span> times for no reason.</p>
+      <div class="row">
+        <button id="clickBtn2" disabled style="display:none;">Click</button>
+        <span id="status2" class="pill warn">Connecting…</span>
+      </div>
+      <div class="hint" id="hint2"></div>
+      <div class="row" style="margin-top: 1rem;">
+        <input type="password" id="passInput2" placeholder="Enter password…" />
+        <button id="unlockBtn2">Unlock Clicker</button>
+      </div>
+      <details><summary>Logs</summary><pre id="log2"></pre></details>
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyAJiCkLxaU_alJEYRDFzlRn-udDllkt-3U",
+      authDomain: "blu-guy.firebaseapp.com",
+      databaseURL: "https://blu-guy-default-rtdb.firebaseio.com",
+      projectId: "blu-guy",
+      storageBucket: "blu-guy.appspot.com",
+      messagingSenderId: "617292266888",
+      appId: "1:617292266888:web:8a3faa7dd0f40bc9884e3d",
+      measurementId: "G-JH3NPK6LS0"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    // Optional: debug what’s happening under the hood
+    // firebase.database.enableLogging(true);
+
+    // Shared setup for each box
+    function setupCounter(id, path, password) {
+      const counterRef = db.ref(path);
+      const el = (prefix) => document.getElementById(prefix + id);
+
+      const btn = el("clickBtn"), statusEl = el("status"), counterEl = el("counterDisplay");
+      const passInput = el("passInput"), unlockBtn = el("unlockBtn"), hintEl = el("hint"), logEl = el("log");
+
+      const setStatus = (msg, c) => { statusEl.textContent = msg; statusEl.className = "pill " + (c || ""); };
+      const log = (...args) => { logEl.textContent += args.map(a => typeof a === "string" ? a : JSON.stringify(a)).join(" ") + "\n"; };
+
+      let connectedOnce = false;
+      const stuckTimer = setTimeout(() => {
+        if (!connectedOnce) {
+          setStatus("Still connecting…", "warn");
+          hintEl.textContent = "If this persists: verify databaseURL and rules.";
+        }
+      }, 8000);
+
+      db.ref(".info/connected").on("value", (snap) => {
+        if (snap.val()) {
+          connectedOnce = true;
+          clearTimeout(stuckTimer);
+          setStatus("Connected", "ok");
+          hintEl.textContent = "";
+        } else {
+          setStatus("Offline", "warn");
+        }
+      });
+
+      counterRef.on("value", (snap) => {
+        const count = snap.val() ?? 0;
+        counterEl.textContent = count;
+      }, (err) => {
+        setStatus("Read error", "err");
+        log("Read error:", err);
+      });
+
+      btn.addEventListener("click", async () => {
+        btn.disabled = true; setStatus("Updating…", "warn");
+        try {
+          await counterRef.transaction((cur) => (cur || 0) + 1);
+          setStatus("Live", "ok");
+        } catch (e) {
+          setStatus("Write error", "err");
+          log("Write error:", e);
+        } finally {
+          btn.disabled = false;
+        }
+      });
+
+      unlockBtn.addEventListener("click", () => {
+        if (passInput.value === password) {
+          btn.style.display = "";
+          btn.disabled = false;
+          passInput.disabled = true;
+          unlockBtn.disabled = true;
+          setStatus("Access granted 🔓", "ok");
+        } else {
+          setStatus("Wrong password ❌", "err");
+        }
+      });
+    }
+
+    // Init counters (make sure these paths match your rules)
+    setupCounter("1", "sharedCounter", "bluedontsharethispassword");
+    setupCounter("2", "sharedCounterTwo", "bluedontsharethispassword");
+  </script>
+</body>
+</html>
